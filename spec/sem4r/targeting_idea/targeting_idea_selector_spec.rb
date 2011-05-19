@@ -94,6 +94,16 @@ describe TargetingIdeaSelector do
     end    
   end
 
+  describe RelatedToUrlSearchParameter do
+    it "accepts a set of urls" do
+      RelatedToUrlSearchParameter.new { url('www.google.com') }.urls.should have(1).item
+      RelatedToUrlSearchParameter.new { url('www.google.com'); url('www.yahoo.com') }.urls.should have(2).items
+    end
+
+    it "accepts an optional parameter for sub urls"
+    it "should produce xml (input for google)"
+  end
+
   describe ExcludedKeywordSearchParameter do
     it "should produce xml (input for google)" do
       sp = ExcludedKeywordSearchParameter.new do
