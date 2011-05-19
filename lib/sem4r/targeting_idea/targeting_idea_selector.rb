@@ -50,6 +50,26 @@ module Sem4r
     end
   end
 
+  class RelatedToUrlSearchParameter
+    include Sem4rSoap::SoapAttributes
+
+    g_set_accessor :url
+
+    def initialize(&block)
+      if block_given?
+        block.arity < 1 ? instance_eval(&block) : block.call(self)
+      end
+    end
+
+    def to_xml
+      xml = '<s:searchParameters xsi:type="s:RelatedToUrlSearchParameter">'
+      urls.each do |u|
+        xml << "<s:urls>#{u}</s:urls>"
+      end
+      xml << '</s:searchParameters>'
+    end
+  end
+
   class ExcludedKeywordSearchParameter
     include Sem4rSoap::SoapAttributes
 
@@ -162,6 +182,10 @@ module Sem4r
     # TODO: synthetize following methods with metaprogramming
     def related_to_keyword_search_parameter(&block)
       @search_parameters << RelatedToKeywordSearchParameter.new(&block)
+    end
+
+    def related_to_url_search_parameter(&block)
+      @search_parameters << RelatedToUrlSearchParameter.new(&block)
     end
 
     def excluded_keyword_search_parameter(&block)
