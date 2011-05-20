@@ -23,12 +23,15 @@
 # -------------------------------------------------------------------------
 
 module Sem4r
+  class SearchParameterBase
+    def self.xml(&block)
+      return @__xml__ unless block_given?
+      @__xml__ = block
+    end
 
-  class RelatedToKeywordSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_set_accessor :text
-    g_accessor :match_type
+    def self.inherited(klass)
+      klass.send :include, Sem4rSoap::SoapAttributes
+    end
 
     def initialize(&block)
       if block_given?
@@ -37,131 +40,29 @@ module Sem4r
     end
 
     def to_xml
-      xml = ""
-      xml << '<s:searchParameters xsi:type="s:RelatedToKeywordSearchParameter">'
-      texts.each do |t|
-        xml << '<s:keywords xsi:type="Keyword">'
-          xml << "<Criterion.Type>Keyword</Criterion.Type>"
-          xml << "<text>#{t}</text>"
-          xml << "<matchType>#{match_type}</matchType>"
-        xml << "</s:keywords>"
-      end
-      xml << '</s:searchParameters>'
-    end
-  end
-
-  class RelatedToUrlSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_set_accessor :url
-
-    def initialize(&block)
-      if block_given?
-        block.arity < 1 ? instance_eval(&block) : block.call(self)
-      end
-    end
-
-    def to_xml
-      xml = '<s:searchParameters xsi:type="s:RelatedToUrlSearchParameter">'
-      urls.each do |u|
-        xml << "<s:urls>#{u}</s:urls>"
-      end
-      xml << '</s:searchParameters>'
-    end
-  end
-
-  class ExcludedKeywordSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_accessor :text
-    g_accessor :match_type
-
-    def initialize(&block)
-      if block_given?
-        block.arity < 1 ? instance_eval(&block) : block.call(self)
-      end
-    end
-
-    def to_xml
-      <<-EOS
-          <s:searchParameters xsi:type="s:ExcludedKeywordSearchParameter">
-            <s:keywords xsi:type="Keyword">
-              <Criterion.Type>Keyword</Criterion.Type>
-              <text>#{text}</text>
-              <matchType>#{match_type}</matchType>
-            </s:keywords>
-          </s:searchParameters>
-      EOS
-    end
-  end
-
-  class KeywordMatchTypeSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_set_accessor :match_type
-
-    def initialize(&block)
-      if block_given?
-        block.arity < 1 ? instance_eval(&block) : block.call(self)
-      end
-    end
-
-    def to_xml
-      xml = ""
-      xml << '<s:searchParameters xsi:type="s:KeywordMatchTypeSearchParameter">'
-      match_types.each do |t|
-        xml << "<s:keywordMatchTypes>#{t}</s:keywordMatchTypes>"
-      end
-      xml << '</s:searchParameters>'
-    end
-  end
-
-  class CountryTargetSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_set_accessor :country_code
-
-    def initialize(&block)
-      if block_given?
-        block.arity < 1 ? instance_eval(&block) : block.call(self)
-      end
-    end
-
-    def to_xml
-      xml = ""
-      xml << '<s:searchParameters xsi:type="s:CountryTargetSearchParameter">'
-      country_codes.each do |t|
-        # tag contryCode is into the cm namespace (sem4r main namespace)
-        # tag contryTarget is into o namespace (sem4r service namespace)
-        xml << "<s:countryTargets><countryCode>#{t}</countryCode></s:countryTargets>"
-      end
-      xml << '</s:searchParameters>'
-    end
-  end
-  
-  class NgramGroupsSearchParameter
-    include Sem4rSoap::SoapAttributes
-
-    g_set_accessor :ngram
-
-    def initialize(&block)
-      if block_given?
-        block.arity < 1 ? instance_eval(&block) : block.call(self)
-      end
-    end
-
-    def to_xml
-      xml = ""
-      xml << '<s:searchParameters xsi:type="s:NgramGroupsSearchParameter">'
-      ngrams.each do |t|
-        xml << "<s:ngramGroups>#{t}</s:ngramGroups>"
-      end
-      xml << '</s:searchParameters>'
+      name = self.class.name.split("::").last
+      xml = "<s:searchParameters xsi:type='s:#{name}'>"
+        xml += instance_eval(&self.class.xml)
+      xml += "</s:searchParameters>"
     end
   end
   
   class TargetingIdeaSelector
     include Sem4rSoap::SoapAttributes
+
+    class << self
+      def search_parameter(pname, &block)
+        class_name = pname.to_s.split("_").map{|e| e.capitalize}.join + "SearchParameter"
+        klass = Sem4r.const_set(class_name, Class.new(SearchParameterBase))
+        klass.instance_eval &block
+
+        class_eval <<-EOS
+          def #{pname}_search_parameter(&block)
+            @search_parameters << #{class_name}.new(&block)
+          end
+        EOS
+      end
+    end
 
     enum :IdeaTypes, [:KEYWORD, :PLACEMENT]
     enum :RequestTypes, [:IDEAS, :STATS]
@@ -177,31 +78,6 @@ module Sem4r
       if block_given?
         block.arity < 1 ? instance_eval(&block) : block.call(self)
       end
-    end
-
-    # TODO: synthetize following methods with metaprogramming
-    def related_to_keyword_search_parameter(&block)
-      @search_parameters << RelatedToKeywordSearchParameter.new(&block)
-    end
-
-    def related_to_url_search_parameter(&block)
-      @search_parameters << RelatedToUrlSearchParameter.new(&block)
-    end
-
-    def excluded_keyword_search_parameter(&block)
-      @search_parameters << ExcludedKeywordSearchParameter.new(&block)
-    end
-
-    def keyword_match_type_search_parameter(&block)
-      @search_parameters << KeywordMatchTypeSearchParameter.new(&block)
-    end
-
-    def country_target_search_parameter(&block)
-      @search_parameters << CountryTargetSearchParameter.new(&block)
-    end
-    
-    def ngram_group_search_parameter(&block)
-      @search_parameters << NgramGroupsSearchParameter.new(&block)
     end
 
     def to_xml
@@ -246,5 +122,74 @@ module Sem4r
 
     ##########################################################################
 
+    search_parameter :related_to_keyword do
+      g_set_accessor :text
+      g_accessor :match_type
+
+      xml do
+        texts.map do |t|
+          <<-EOS
+            <s:keywords xsi:type="Keyword">
+              <Criterion.Type>Keyword</Criterion.Type>
+              <text>#{t}</text>
+              <matchType>#{match_type}</matchType>
+            </s:keywords>
+          EOS
+        end.join
+      end
+    end
+
+    search_parameter :related_to_url do
+      g_set_accessor :url
+
+      xml do
+        urls.map {|u| "<s:urls>#{u}</s:urls>"}.join
+      end
+    end
+
+    search_parameter :excluded_keyword do
+      g_accessor :text
+      g_accessor :match_type
+
+      xml do
+        <<-EOS
+          <s:keywords xsi:type="Keyword">
+            <Criterion.Type>Keyword</Criterion.Type>
+            <text>#{text}</text>
+            <matchType>#{match_type}</matchType>
+          </s:keywords>
+        EOS
+      end
+    end
+
+    search_parameter :keyword_match_type do
+      g_set_accessor :match_type
+
+      xml do
+        match_types.map do |mt|
+          "<s:keywordMatchTypes>#{mt}</s:keywordMatchTypes>"
+        end.join
+      end
+    end
+
+    search_parameter :country_target do
+      g_set_accessor :country_code
+
+      xml do
+        country_codes.map do |cc|
+          "<s:countryTargets><countryCode>#{cc}</countryCode></s:countryTargets>"
+        end.join
+      end
+    end
+
+    search_parameter :ngram_groups do
+      g_set_accessor :ngram
+
+      xml do
+        ngrams.map do |t|
+          "<s:ngramGroups>#{t}</s:ngramGroups>"
+        end.join
+      end
+    end
   end
 end
